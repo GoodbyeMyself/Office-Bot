@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel文件汇总工具</title>
+    
+    <!-- Element Plus CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    
+    <!-- 自定义CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 主容器 -->
+        <el-container class="main-container">
+            <!-- 页面头部 -->
+            <el-header class="header">
+                <h3>Excel文件汇总工具</h3>
+            </el-header>
+
+            <!-- 主要内容区域 -->
+            <el-main>
+                <el-row :gutter="20" class="main-content">
+                    <!-- 左侧：主表选择 -->
+                    <el-col :xs="24" :sm="24" :md="12" :lg="12">
+                        <el-card class="panel-card">
+                            <template #header>
+                                <div class="card-header">
+                                    <el-icon class="card-icon">📋</el-icon>
+                                    <span>主表（汇总表）</span>
+                    </div>
+                            </template>
+
+                            <el-upload
+                                class="upload-demo"
+                                :action="''"
+                                :http-request="() => {}"
+                                :before-upload="beforeMainUpload"
+                                :on-success="handleMainUploadSuccess"
+                                :on-error="handleUploadError"
+                                :show-file-list="false"
+                                accept=".xlsx,.xls"
+                                drag>
+                                <div class="el-upload__text">
+                                    将主表文件拖到此处，或<em>点击选择文件</em>
+                        </div>
+                                <template #tip>
+                                    <div class="el-upload__tip">
+                                        只能上传xlsx/xls文件
+                    </div>
+                                </template>
+                            </el-upload>
+
+                            <!-- 主表文件信息 -->
+                            <div v-if="mainFile" class="file-info-section">
+                                <el-alert
+                                    :title="`主表文件：${mainFile.name}`"
+                                    type="success"
+                                    :closable="false"
+                                    show-icon>
+                                    <template #default>
+                                        <p><strong>数据行数：</strong>{{ mainFile.data ? mainFile.data.length : 0 }}</p>
+                                    </template>
+                                </el-alert>
+
+                                <!-- 主表数据预览 -->
+                                <div v-if="mainFile.data" class="preview-section">
+                                    <h4>数据预览</h4>
+                                    <el-table :data="mainFile.data.slice(1, 6)" style="width: 100%" size="small" max-height="250">
+                                        <el-table-column
+                                            v-for="(header, index) in mainFile.data[0]"
+                                            :key="index"
+                                            :prop="index.toString()"
+                                            :label="header || `列${index + 1}`"
+                                            :formatter="(row) => row[index] || ''"
+                                            show-overflow-tooltip>
+                                        </el-table-column>
+                                    </el-table>
+                                    <div v-if="mainFile.data.length > 6" class="table-footer">
+                                        <el-text type="info">... 还有 {{ mainFile.data.length - 6 }} 行数据</el-text>
+                    </div>
+                </div>
+            </div>
+                        </el-card>
+                    </el-col>
+
+                    <!-- 右侧：待合并文件管理 -->
+                    <el-col :xs="24" :sm="24" :md="12" :lg="12">
+                        <div class="right-panel-container">
+                            <!-- 上传区域 -->
+                            <div class="upload-section">
+                                <h4 class="section-title">📁 待合并文件列表</h4>
+                                <el-upload
+                                class="upload-demo"
+                                :action="''"
+                                :http-request="() => {}"
+                                :before-upload="beforeMergeUpload"
+                                :on-success="handleMergeUploadSuccess"
+                                :on-error="handleUploadError"
+                                :on-remove="handleRemove"
+                                :on-exceed="handleExceed"
+                       accept=".xlsx,.xls" 
+                                multiple
+                                drag>
+                                <div class="el-upload__text">
+                                    将待合并文件拖到此处，或<em>点击选择文件</em>
+                                </div>
+                                <template #tip>
+                                    <div class="el-upload__tip">
+                                        可以选择多个文件进行合并
+                                    </div>
+                                </template>
+                            </el-upload>
+                            </div>
+
+                            <!-- 文件列表区域 -->
+                            <el-card class="files-list-card">
+                                <div v-if="mergeFiles.length === 0" class="empty-state">
+                                    <el-empty description="暂未添加任何待合并文件">
+                                        <el-text type="info">请在上方上传待合并的Excel文件</el-text>
+                                    </el-empty>
+                                </div>
+
+                                <div v-else class="merge-files-container">
+                                <div v-for="(file, index) in mergeFiles" :key="file.id" class="merge-file-card">
+                                    <el-card shadow="hover">
+                                        <template #header>
+                                            <div class="file-card-header">
+                                                <el-text><el-icon>📄</el-icon> {{ file.name }}</el-text>
+                                                <el-button
+                                                    type="danger"
+                                                    size="small"
+                                                    circle
+                                                    @click="removeMergeFile(index)">
+                                                    ✖
+                                                </el-button>
+                        </div>
+                                        </template>
+
+                        <div class="file-details">
+                                            <p><strong>数据行数：</strong>{{ file.data ? file.data.length : 0 }}</p>
+                        </div>
+                        
+                                        <!-- 文件数据预览 -->
+                                        <div v-if="file.data" class="mini-preview">
+                                            <el-collapse>
+                                                <el-collapse-item title="查看数据预览" name="preview">
+                                                    <el-table :data="file.data.slice(1, 4)" size="small" max-height="150">
+                                                        <el-table-column
+                                                            v-for="(header, hIndex) in file.data[0]"
+                                                            :key="hIndex"
+                                                            :prop="hIndex.toString()"
+                                                            :label="header || `列${hIndex + 1}`"
+                                                            :formatter="(row) => row[hIndex] || ''"
+                                                            show-overflow-tooltip>
+                                                        </el-table-column>
+                                                    </el-table>
+                                                    <div v-if="file.data.length > 4" class="table-footer">
+                                                        <el-text size="small" type="info">... 还有 {{ file.data.length - 4 }} 行数据</el-text>
+                        </div>
+                                                </el-collapse-item>
+                                            </el-collapse>
+                    </div>
+                                    </el-card>
+                                </div>
+                                </div>
+                            </el-card>
+                        </div>
+                    </el-col>
+                </el-row>
+
+                <!-- 操作按钮区域 -->
+                <el-row class="control-section">
+                    <el-col :span="24" class="text-center">
+                        <el-space size="large">
+                            <el-button
+                                type="success"
+                                size="large"
+                    :disabled="!canMerge || loading" 
+                                :loading="loading"
+                                @click="performMerge">
+                🔄 直接合并到主表
+                            </el-button>
+                        </el-space>
+
+                        <!-- 加载状态提示 -->
+                        <div v-if="loading" class="loading-section">
+                            <el-alert
+                                :title="loadingText"
+                                type="info"
+                                :closable="false"
+                                show-icon>
+                                <el-icon class="is-loading">⏳</el-icon>
+                            </el-alert>
+        </div>
+                    </el-col>
+                </el-row>
+
+            </el-main>
+        </el-container>
+    </div>
+
+    <!-- 引入JavaScript库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus/dist/index.full.js"></script>
+    
+    <!-- 引入自定义JavaScript -->
+    <script src="script.js"></script>
+    
+    <script>
+        // 初始化应用
+        const app = ExcelMergerApp;
+        
+        // 使用Element Plus
+        app.use(ElementPlus);
+        
+        // 挂载应用
+        app.mount('#app');
+    </script>
+</body>
+</html>
